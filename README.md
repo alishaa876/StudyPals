@@ -74,4 +74,4 @@ Module 2: Development in progress.
 
 This screenshot shows the initial working StudyPals application with four-tab navigation.
 
-![StudyPals Application](assets/module1-navigation.jpg)
+![StudyPals Application](assets/module1-navigation.jpeg)
