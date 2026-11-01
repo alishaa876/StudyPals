@@ -69,3 +69,9 @@ Module 1: Progress completed and documented.
 Module 2: Development in progress.
 
 **Note:** Features listed under future development are planned features and are not yet claimed as completed.
+
+## Module 1 – Application Screenshot
+
+This screenshot shows the initial working StudyPals application with four-tab navigation.
+
+![StudyPals Application](assets/module1-navigation.jpg)
