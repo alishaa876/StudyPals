@@ -63,15 +63,46 @@ The upcoming modules will focus on:
 - Data validation and application testing.
 - Final APK build and project documentation.
 
-## Project Status
-Module 1: Progress completed and documented.
-
-Module 2: Development in progress.
-
-**Note:** Features listed under future development are planned features and are not yet claimed as completed.
 
 ## Module 1 – Application Screenshot
 
 This screenshot shows the initial working StudyPals application with four-tab navigation.
 
 ![StudyPals Application](assets/module1-navigation.jpeg)
+
+## Module 2: Study Group Development and Local Database
+
+**Duration:** November 02 – November 08, 2026
+
+### Completed Work
+
+- Implemented the study group creation form.
+- Added subject tags for study groups.
+- Implemented the study group listing screen.
+- Added CRUD operations (Create, Read, Update, Delete) for managing study groups.
+- Created a simple user profile screen.
+- Integrated Hive CE for local database storage.
+- Implemented saving and loading of application data using the local database.
+
+### Module 2 – Key Features
+
+1. **Create Groups:** Users can create new study groups.
+2. **View Groups:** Users can view available study groups.
+3. **Edit Groups:** Users can update existing study group information.
+4. **Delete Groups:** Users can remove study groups.
+5. **User Profile:** A basic profile screen is available.
+6. **Local Database:** Study group data is stored and retrieved using Hive CE.
+
+### Module 2 – Application Screenshots
+
+Module 2 screenshots will be added below to demonstrate the completed implementation.
+
+![StudyPals Application](assets/homepage.jpeg)
+![StudyPals Application](assets/homepage2.jpeg)
+![StudyPals Application](assets/grouppage.jpeg)
+![StudyPals Application](assets/profilepage.jpeg)
+![StudyPals Application](assets/profilepage2.jpeg)
+
+## Project Status
+Module 1: Progress completed.
+Module 2 : Progress completed.
