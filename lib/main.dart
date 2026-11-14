@@ -585,12 +585,13 @@ class StudyPalsHome extends StatefulWidget {
 }
 
 class _StudyPalsHomeState extends State<StudyPalsHome> {
-  int selectedTab = 0; // 0 Home, 1 Groups, 2 Library, 3 Profile
+  int selectedTab = 0; // 0 Home, 1 Groups, 2 Library, 3 Profile, 4 Chats
   bool loading = true;
   final groups = <StudyGroup>[];
   final searchController = TextEditingController();
   Map<String, Object?>? profile;
   String selectedSubject = 'All';
+  TimeFilter timeFilter = TimeFilter.any;
 
   @override
   void initState() {
@@ -650,6 +651,8 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
     return '$date • $hour:$minute ${value.hour >= 12 ? 'PM' : 'AM'}';
   }
 
+  // The form screen saves to the database itself (with a loading spinner),
+  // so here we only update the list on screen.
   Future<void> _openGroupForm({StudyGroup? group}) async {
     final result = await Navigator.push<StudyGroup>(
       context,
@@ -657,64 +660,19 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
     );
     if (!mounted || result == null) return;
 
-    try {
-      if (group == null) {
-        final id = await DatabaseService.instance.addGroup(
-          name: result.name,
-          subject: result.subject,
-          description: result.description,
-          location: result.location,
-          dateTime: result.dateTime,
-          seats: result.seats,
-          tags: result.tags,
-        );
-        setState(
-          () => groups.insert(
-            0,
-            StudyGroup(
-              id: id,
-              name: result.name,
-              subject: result.subject,
-              description: result.description,
-              location: result.location,
-              dateTime: result.dateTime,
-              seats: result.seats,
-              tags: result.tags,
-            ),
-          ),
-        );
-        _message('Study group created successfully!');
-      } else if (group.id != null) {
-        await DatabaseService.instance.updateGroup(
-          id: group.id!,
-          name: result.name,
-          subject: result.subject,
-          description: result.description,
-          location: result.location,
-          dateTime: result.dateTime,
-          seats: result.seats,
-          tags: result.tags,
-        );
-        final index = groups.indexWhere((item) => item.id == group.id);
-        if (index >= 0) {
-          setState(
-            () => groups[index] = StudyGroup(
-              id: group.id,
-              name: result.name,
-              subject: result.subject,
-              description: result.description,
-              location: result.location,
-              dateTime: result.dateTime,
-              seats: result.seats,
-              tags: result.tags,
-            ),
-          );
-        }
-        _message('Group changes saved!');
+    setState(() {
+      final index = groups.indexWhere((item) => item.id == result.id);
+      if (index >= 0) {
+        groups[index] = result;
+      } else {
+        groups.insert(0, result);
       }
-    } catch (error) {
-      _message('Could not save group: $error');
-    }
+    });
+    _message(
+      group == null
+          ? 'Study group created successfully!'
+          : 'Group changes saved!',
+    );
   }
 
   Future<void> _deleteGroup(StudyGroup group) async {
@@ -831,6 +789,23 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
           .toList()
         ..sort();
 
+  bool get _filtersActive =>
+      selectedSubject != 'All' || timeFilter != TimeFilter.any;
+
+  Future<void> _openFilters() async {
+    final result = await showGroupFilterSheet(
+      context,
+      subjects: _subjects,
+      subject: selectedSubject,
+      time: timeFilter,
+    );
+    if (result == null) return;
+    setState(() {
+      selectedSubject = result.subject;
+      timeFilter = result.time;
+    });
+  }
+
   List<StudyGroup> get _visibleGroups {
     final query = searchController.text.trim().toLowerCase();
     return groups.where((group) {
@@ -841,7 +816,9 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
           group.name.toLowerCase().contains(query) ||
           group.subject.toLowerCase().contains(query) ||
           group.tags.any((tag) => tag.toLowerCase().contains(query));
-      return matchesSubject && matchesQuery;
+      return matchesSubject &&
+          matchesQuery &&
+          matchesTimeFilter(group.dateTime, timeFilter);
     }).toList();
   }
 
@@ -1224,8 +1201,12 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
         ),
         actions: [
           IconButton(
-            onPressed: () => setState(() {}),
-            icon: const Icon(Icons.tune_rounded),
+            onPressed: _openFilters,
+            icon: Badge(
+              isLabelVisible: _filtersActive,
+              smallSize: 9,
+              child: const Icon(Icons.tune_rounded),
+            ),
           ),
         ],
       ),
@@ -1248,7 +1229,7 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
                           child: Text(
                             groups.isEmpty
                                 ? 'No groups yet. Tap + to create one.'
-                                : 'No groups match your search.',
+                                : 'No groups match your search or filters.',
                             style: const TextStyle(color: Colors.black54),
                           ),
                         )
@@ -1262,60 +1243,6 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
             ),
     );
   }
-
-  Widget _libraryPage() => Scaffold(
-    appBar: AppBar(title: const Text('Library Slots')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Container(
-          height: 180,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [purple, Color(0xFF9A85FF)]),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: const Center(
-            child: Icon(
-              Icons.local_library_rounded,
-              size: 76,
-              color: Colors.white,
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          'Find a quiet place to study',
-          style: TextStyle(
-            color: deepPurple,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Library table availability and time-slot reservations are planned for Module 3.',
-          style: TextStyle(color: Colors.black54, height: 1.4),
-        ),
-        const SizedBox(height: 18),
-        Card(
-          color: Colors.white,
-          child: ListTile(
-            leading: const Icon(Icons.event_seat_outlined, color: purple),
-            title: const Text('Seat availability'),
-            subtitle: const Text('Coming in the next module'),
-          ),
-        ),
-        Card(
-          color: Colors.white,
-          child: ListTile(
-            leading: const Icon(Icons.calendar_month_outlined, color: green),
-            title: const Text('Reserve a time slot'),
-            subtitle: const Text('Coming in the next module'),
-          ),
-        ),
-      ],
-    ),
-  );
 
   Future<void> _editProfile() async {
     final values = await showDialog<Map<String, String>>(
@@ -1444,13 +1371,9 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Card(
-                  color: Colors.white,
-                  child: ListTile(
-                    leading: Icon(Icons.stars_rounded, color: purple),
-                    title: Text('Profile badges'),
-                    subtitle: Text('Badges will be added in Module 3.'),
-                  ),
+                ProfileBadges(
+                  groupCount: groups.length,
+                  refreshToken: selectedTab * 1000 + groups.length,
                 ),
               ],
             ),
@@ -1517,7 +1440,15 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [_homePage(), _groupsPage(), _libraryPage(), _profilePage()];
+    // Page order matches the tab numbers: 0 Home, 1 Groups, 2 Library,
+    // 3 Profile, 4 Chats.
+    final pages = [
+      _homePage(),
+      _groupsPage(),
+      const LibraryScreen(),
+      _profilePage(),
+      ChatListScreen(refreshToken: selectedTab * 1000 + groups.length),
+    ];
     return Scaffold(
       body: IndexedStack(index: selectedTab, children: pages),
       floatingActionButton: FloatingActionButton(
@@ -1542,6 +1473,7 @@ class _StudyPalsHomeState extends State<StudyPalsHome> {
               _navItem(1, Icons.groups_outlined, 'Groups'),
               const SizedBox(width: 56),
               _navItem(2, Icons.menu_book_outlined, 'Library'),
+              _navItem(4, Icons.chat_bubble_outline, 'Chats'),
               _navItem(3, Icons.person_outline, 'Profile'),
             ],
           ),
@@ -1570,6 +1502,7 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
   DateTime? date;
   TimeOfDay? time;
   int seats = 5;
+  bool saving = false;
 
   bool get editing => widget.group != null;
 
@@ -1634,11 +1567,26 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     if (result != null) setState(() => time = result);
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (saving) return;
     if (!formKey.currentState!.validate()) return;
     if (date == null || time == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose a date and time slot.')),
+      );
+      return;
+    }
+    final dateTime = DateTime(
+      date!.year,
+      date!.month,
+      date!.day,
+      time!.hour,
+      time!.minute,
+    );
+    final timeChanged = !editing || dateTime != widget.group!.dateTime;
+    if (timeChanged && !dateTime.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a date and time in the future.')),
       );
       return;
     }
@@ -1648,25 +1596,59 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
       );
       return;
     }
-    Navigator.pop(
-      context,
-      StudyGroup(
-        id: widget.group?.id,
-        name: nameController.text.trim(),
-        subject: subjectController.text.trim(),
-        description: descriptionController.text.trim(),
-        location: locationController.text.trim(),
-        dateTime: DateTime(
-          date!.year,
-          date!.month,
-          date!.day,
-          time!.hour,
-          time!.minute,
+
+    setState(() => saving = true);
+    final name = nameController.text.trim();
+    final subject = subjectController.text.trim();
+    final description = descriptionController.text.trim();
+    final location = locationController.text.trim();
+    final tagList = tags.toList();
+    try {
+      int id;
+      if (editing && widget.group!.id != null) {
+        id = widget.group!.id!;
+        await DatabaseService.instance.updateGroup(
+          id: id,
+          name: name,
+          subject: subject,
+          description: description,
+          location: location,
+          dateTime: dateTime,
+          seats: seats,
+          tags: tagList,
+        );
+      } else {
+        id = await DatabaseService.instance.addGroup(
+          name: name,
+          subject: subject,
+          description: description,
+          location: location,
+          dateTime: dateTime,
+          seats: seats,
+          tags: tagList,
+        );
+      }
+      if (!mounted) return;
+      Navigator.pop(
+        context,
+        StudyGroup(
+          id: id,
+          name: name,
+          subject: subject,
+          description: description,
+          location: location,
+          dateTime: dateTime,
+          seats: seats,
+          tags: tagList,
         ),
-        seats: seats,
-        tags: tags.toList(),
-      ),
-    );
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save group: $error')),
+      );
+    }
   }
 
   Widget _field({
@@ -1688,8 +1670,18 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
         hintText: hint,
         prefixIcon: Icon(icon, color: purple),
       ),
-      validator: (value) =>
-          value == null || value.trim().isEmpty ? 'Please enter $label' : null,
+      validator: (value) {
+        final text = value?.trim() ?? '';
+        if (text.isEmpty) return 'Please enter $label';
+        if (label == 'Group name' && text.length < 3) {
+          return 'Name must be at least 3 characters';
+        }
+        final limit = maxLines > 1 ? 300 : 80;
+        if (text.length > limit) {
+          return 'Keep $label under $limit characters';
+        }
+        return null;
+      },
     ),
   );
 
@@ -1923,8 +1915,17 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                onPressed: _save,
-                icon: Icon(editing ? Icons.save_outlined : Icons.add),
+                onPressed: saving ? null : _save,
+                icon: saving
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(editing ? Icons.save_outlined : Icons.add),
                 label: Text(
                   editing ? 'Save changes' : 'Create Group',
                   style: const TextStyle(fontWeight: FontWeight.bold),
@@ -2029,6 +2030,1574 @@ class _ProfileEditDialogState extends State<ProfileEditDialog> {
           child: const Text('Save'),
         ),
       ],
+    );
+  }
+}
+
+// ============================================================================
+// MODULE 3: LIBRARY SEAT AVAILABILITY AND SLOT BOOKING
+// ============================================================================
+
+
+class LibraryTable {
+  const LibraryTable(this.id, this.name, this.zone, this.capacity);
+
+  final int id;
+  final String name;
+  final String zone;
+  final int capacity;
+}
+
+const libraryTables = <LibraryTable>[
+  LibraryTable(1, 'Quiet Table 1', 'Quiet zone', 4),
+  LibraryTable(2, 'Quiet Table 2', 'Quiet zone', 4),
+  LibraryTable(3, 'Group Table 1', 'Discussion zone', 6),
+  LibraryTable(4, 'Group Table 2', 'Discussion zone', 6),
+  LibraryTable(5, 'Window Desk 1', 'Single seats', 2),
+  LibraryTable(6, 'Window Desk 2', 'Single seats', 2),
+];
+
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _dateKey(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+String _hourLabel(int hour) {
+  final h = hour % 12 == 0 ? 12 : hour % 12;
+  return '$h:00 ${hour >= 12 ? 'PM' : 'AM'}';
+}
+
+String _slotLabel(int hour) => '${_hourLabel(hour)} - ${_hourLabel(hour + 1)}';
+
+String _longDate(DateTime d) =>
+    '${_weekdays[d.weekday - 1]}, ${d.day} ${_months[d.month - 1]}';
+
+class LibraryScreen extends StatefulWidget {
+  const LibraryScreen({super.key});
+
+  @override
+  State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends State<LibraryScreen> {
+  static const firstHour = 8; // first slot 8:00 AM
+  static const lastHour = 19; // last slot 7:00 PM - 8:00 PM
+
+  late final List<DateTime> days;
+  int dayIndex = 0;
+  int? selectedHour;
+  bool loading = true;
+  List<Map<String, Object?>> bookings = [];
+
+  DateTime get selectedDay => days[dayIndex];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    days = List.generate(7, (i) => DateTime(now.year, now.month, now.day + i));
+    selectedHour = _firstOpenHour(days.first);
+    _load();
+  }
+
+  void _message(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  bool _isPast(DateTime day, int hour) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return day == today && hour <= now.hour;
+  }
+
+  int? _firstOpenHour(DateTime day) {
+    for (var h = firstHour; h <= lastHour; h++) {
+      if (!_isPast(day, h)) return h;
+    }
+    return null;
+  }
+
+  /// Demo data: pretends other students already use some seats.
+  /// The same table/day/hour always gives the same number.
+  int _simulatedTaken(LibraryTable table, DateTime day, int hour) {
+    final seed = table.id * 31 + day.day * 17 + day.month * 13 + hour * 7;
+    return seed % (table.capacity + 1);
+  }
+
+  int _mySeats(LibraryTable table, DateTime day, int hour) {
+    final key = _dateKey(day);
+    var total = 0;
+    for (final booking in bookings) {
+      if (booking['tableId'] == table.id &&
+          booking['date'] == key &&
+          booking['slotHour'] == hour) {
+        total += booking['seats'] as int;
+      }
+    }
+    return total;
+  }
+
+  int _freeSeats(LibraryTable table) {
+    final hour = selectedHour;
+    if (hour == null) return 0;
+    final free =
+        table.capacity -
+        _simulatedTaken(table, selectedDay, hour) -
+        _mySeats(table, selectedDay, hour);
+    return free < 0 ? 0 : free;
+  }
+
+  Future<void> _load({bool showSpinner = true}) async {
+    if (showSpinner) setState(() => loading = true);
+    try {
+      final rows = await DatabaseService.instance.getBookings();
+      if (!mounted) return;
+      setState(() {
+        bookings = rows;
+        loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => loading = false);
+      _message('Could not load bookings: $error');
+    }
+  }
+
+  void _selectDay(int index) {
+    setState(() {
+      dayIndex = index;
+      final hour = selectedHour;
+      if (hour == null || _isPast(days[index], hour)) {
+        selectedHour = _firstOpenHour(days[index]);
+      }
+    });
+  }
+
+  Future<void> _book(LibraryTable table, int free) async {
+    final hour = selectedHour;
+    if (hour == null) {
+      _message('Choose a time slot first.');
+      return;
+    }
+    final key = _dateKey(selectedDay);
+    final alreadyBooked = bookings.any(
+      (b) => b['date'] == key && b['slotHour'] == hour,
+    );
+    if (alreadyBooked) {
+      _message('You already have a booking at this time. Cancel it first.');
+      return;
+    }
+
+    final booked = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (_) => _BookingSheet(
+        table: table,
+        day: selectedDay,
+        hour: hour,
+        maxSeats: free,
+      ),
+    );
+    if (booked == true) {
+      await _load(showSpinner: false);
+      _message('Booked ${table.name} for ${_slotLabel(hour)}.');
+    }
+  }
+
+  Future<void> _cancelBooking(Map<String, Object?> booking) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel this booking?'),
+        content: Text(
+          '${booking['tableName']} on ${_longDate(DateTime.parse(booking['date'] as String))}, '
+          '${_slotLabel(booking['slotHour'] as int)}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep it'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cancel booking'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await DatabaseService.instance.deleteBooking(booking['id'] as int);
+      await _load(showSpinner: false);
+      _message('Booking cancelled.');
+    } catch (error) {
+      _message('Could not cancel booking: $error');
+    }
+  }
+
+  Widget _label(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text,
+      style: const TextStyle(
+        color: deepPurple,
+        fontWeight: FontWeight.bold,
+        fontSize: 15,
+      ),
+    ),
+  );
+
+  String _dayChipLabel(int index) {
+    if (index == 0) return 'Today';
+    if (index == 1) return 'Tomorrow';
+    final d = days[index];
+    return '${_weekdays[d.weekday - 1]} ${d.day}';
+  }
+
+  Widget _tableCard(LibraryTable table) {
+    final free = _freeSeats(table);
+    final used = table.capacity - free;
+    final Color statusColor = free == 0
+        ? Colors.red
+        : (free == 1 ? Colors.orange : green);
+    return Card(
+      color: Colors.white,
+      elevation: 1,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: lilac,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.event_seat_rounded, color: purple),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    table.name,
+                    style: const TextStyle(
+                      color: deepPurple,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    table.zone,
+                    style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: used / table.capacity,
+                      minHeight: 7,
+                      backgroundColor: const Color(0xFFEDEAF7),
+                      color: statusColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    free == 0
+                        ? 'Full'
+                        : '$free of ${table.capacity} seats free',
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton(
+              onPressed: free > 0 && selectedHour != null
+                  ? () => _book(table, free)
+                  : null,
+              child: const Text('Book'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _availabilityTab() {
+    final hour = selectedHour;
+    final totalFree = hour == null
+        ? 0
+        : libraryTables.fold<int>(0, (sum, t) => sum + _freeSeats(t));
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+      children: [
+        _label('Choose a day'),
+        SizedBox(
+          height: 42,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: days.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (_, index) => ChoiceChip(
+              label: Text(_dayChipLabel(index)),
+              selected: dayIndex == index,
+              onSelected: (_) => _selectDay(index),
+              selectedColor: purple,
+              backgroundColor: Colors.white,
+              labelStyle: TextStyle(
+                color: dayIndex == index ? Colors.white : deepPurple,
+                fontWeight: FontWeight.w600,
+              ),
+              side: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _label('Choose a time slot'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var h = firstHour; h <= lastHour; h++)
+              ChoiceChip(
+                label: Text(_hourLabel(h)),
+                selected: selectedHour == h,
+                onSelected: _isPast(selectedDay, h)
+                    ? null
+                    : (_) => setState(() => selectedHour = h),
+                selectedColor: purple,
+                backgroundColor: Colors.white,
+                labelStyle: TextStyle(
+                  color: selectedHour == h ? Colors.white : deepPurple,
+                  fontWeight: FontWeight.w600,
+                ),
+                side: BorderSide.none,
+              ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator(color: purple)),
+          )
+        else if (hour == null)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Text(
+              'No more slots are open today. Choose another day.',
+              style: TextStyle(color: Colors.black54),
+            ),
+          )
+        else ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [purple, Color(0xFF8B78FF)],
+              ),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.local_library_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${_longDate(selectedDay)} • ${_slotLabel(hour)}\n'
+                    '$totalFree seats free in total',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ...libraryTables.map(_tableCard),
+          const SizedBox(height: 4),
+          const Text(
+            'Demo data: seats used by other students are simulated. Your own bookings are saved on this device.',
+            style: TextStyle(color: Colors.black54, fontSize: 12, height: 1.4),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _bookingsTab() {
+    if (loading && bookings.isEmpty) {
+      return const Center(child: CircularProgressIndicator(color: purple));
+    }
+    if (bookings.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(30),
+          child: Text(
+            'No bookings yet.\nPick a day, a slot and a table to reserve a seat.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.black54, height: 1.5),
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+      itemCount: bookings.length,
+      itemBuilder: (_, index) {
+        final booking = bookings[index];
+        final day = DateTime.parse(booking['date'] as String);
+        final hour = booking['slotHour'] as int;
+        final past = DateTime(
+          day.year,
+          day.month,
+          day.day,
+          hour + 1,
+        ).isBefore(DateTime.now());
+        final seats = booking['seats'] as int;
+        return Card(
+          color: Colors.white,
+          elevation: 1,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            leading: Icon(
+              past ? Icons.history_rounded : Icons.event_available_rounded,
+              color: past ? Colors.black38 : green,
+              size: 30,
+            ),
+            title: Text(
+              booking['tableName'] as String,
+              style: const TextStyle(
+                color: deepPurple,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            subtitle: Text(
+              '${_longDate(day)} • ${_slotLabel(hour)}\n'
+              '$seats ${seats == 1 ? 'seat' : 'seats'}${past ? ' • Past' : ''}',
+              style: const TextStyle(height: 1.4),
+            ),
+            isThreeLine: true,
+            trailing: IconButton(
+              tooltip: 'Cancel booking',
+              onPressed: () => _cancelBooking(booking),
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Library Slots',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          bottom: TabBar(
+            labelColor: purple,
+            unselectedLabelColor: Colors.black54,
+            indicatorColor: purple,
+            tabs: [
+              const Tab(text: 'Availability'),
+              Tab(text: 'My bookings (${bookings.length})'),
+            ],
+          ),
+        ),
+        body: TabBarView(children: [_availabilityTab(), _bookingsTab()]),
+      ),
+    );
+  }
+}
+
+class _BookingSheet extends StatefulWidget {
+  const _BookingSheet({
+    required this.table,
+    required this.day,
+    required this.hour,
+    required this.maxSeats,
+  });
+
+  final LibraryTable table;
+  final DateTime day;
+  final int hour;
+  final int maxSeats;
+
+  @override
+  State<_BookingSheet> createState() => _BookingSheetState();
+}
+
+class _BookingSheetState extends State<_BookingSheet> {
+  int seats = 1;
+  bool saving = false;
+  String? error;
+
+  Future<void> _confirm() async {
+    if (seats < 1 || seats > widget.maxSeats) {
+      setState(() => error = 'Choose between 1 and ${widget.maxSeats} seats.');
+      return;
+    }
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      await DatabaseService.instance.addBooking(
+        tableId: widget.table.id,
+        tableName: widget.table.name,
+        date: _dateKey(widget.day),
+        slotHour: widget.hour,
+        seats: seats,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+        error = 'Could not book this slot: $e';
+      });
+    }
+  }
+
+  Widget _row(IconData icon, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        Icon(icon, size: 19, color: purple),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text)),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          22,
+          8,
+          22,
+          22 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Book ${widget.table.name}',
+              style: const TextStyle(
+                color: deepPurple,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _row(Icons.calendar_month_outlined, _longDate(widget.day)),
+            _row(Icons.access_time, _slotLabel(widget.hour)),
+            _row(
+              Icons.event_seat_outlined,
+              '${widget.maxSeats} seats free at this table',
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'How many seats do you need?',
+              style: TextStyle(color: deepPurple, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                IconButton.filledTonal(
+                  onPressed: saving || seats <= 1
+                      ? null
+                      : () => setState(() => seats--),
+                  icon: const Icon(Icons.remove),
+                ),
+                Expanded(
+                  child: Text(
+                    '$seats',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: deepPurple,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton.filledTonal(
+                  onPressed: saving || seats >= widget.maxSeats
+                      ? null
+                      : () => setState(() => seats++),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(error!, style: const TextStyle(color: Colors.red)),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: saving ? null : _confirm,
+                icon: saving
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: Text(saving ? 'Booking...' : 'Confirm booking'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// MODULE 3: GROUP CHAT LIST AND CHAT SCREEN
+// ============================================================================
+
+
+String _chatTime(DateTime t) {
+  final now = DateTime.now();
+  final sameDay = t.year == now.year && t.month == now.month && t.day == now.day;
+  if (!sameDay) return '${t.day}/${t.month}';
+  final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  final minute = t.minute.toString().padLeft(2, '0');
+  return '$hour:$minute ${t.hour >= 12 ? 'PM' : 'AM'}';
+}
+
+class ChatListScreen extends StatefulWidget {
+  const ChatListScreen({super.key, this.refreshToken = 0});
+
+  /// Change this value to make the list reload (e.g. when the tab is opened).
+  final int refreshToken;
+
+  @override
+  State<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends State<ChatListScreen> {
+  bool loading = true;
+  List<Map<String, Object?>> groups = [];
+  Map<int, Map<String, Object?>> lastMessages = {};
+  String query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      _load(showSpinner: false);
+    }
+  }
+
+  Future<void> _load({bool showSpinner = true}) async {
+    if (showSpinner) setState(() => loading = true);
+    try {
+      final rows = await DatabaseService.instance.getGroups();
+      final last = await DatabaseService.instance.getLastMessages();
+      // Groups with the newest messages come first.
+      rows.sort((a, b) {
+        final aTime = last[a['id'] as int]?['sentAt'] as DateTime?;
+        final bTime = last[b['id'] as int]?['sentAt'] as DateTime?;
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        return bTime.compareTo(aTime);
+      });
+      if (!mounted) return;
+      setState(() {
+        groups = rows;
+        lastMessages = last;
+        loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => loading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not load chats: $error')));
+    }
+  }
+
+  Future<void> _openChat(Map<String, Object?> group) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          groupId: group['id'] as int,
+          groupName: group['name'] as String,
+        ),
+      ),
+    );
+    if (mounted) _load(showSpinner: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = groups.where((g) {
+      if (query.trim().isEmpty) return true;
+      return (g['name'] as String).toLowerCase().contains(
+        query.trim().toLowerCase(),
+      );
+    }).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Group Chats',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator(color: purple))
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                  child: TextField(
+                    onChanged: (value) => setState(() => query = value),
+                    decoration: const InputDecoration(
+                      hintText: 'Search chats...',
+                      prefixIcon: Icon(Icons.search, color: purple),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: visible.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(30),
+                            child: Text(
+                              groups.isEmpty
+                                  ? 'No chats yet.\nCreate a study group to start chatting.'
+                                  : 'No chats match your search.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.black54,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(14, 2, 14, 100),
+                          itemCount: visible.length,
+                          itemBuilder: (_, index) {
+                            final group = visible[index];
+                            final last = lastMessages[group['id'] as int];
+                            return Card(
+                              color: Colors.white,
+                              elevation: 1,
+                              margin: const EdgeInsets.only(bottom: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: ListTile(
+                                onTap: () => _openChat(group),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 6,
+                                ),
+                                leading: CircleAvatar(
+                                  radius: 25,
+                                  backgroundColor: lilac,
+                                  child: Text(
+                                    (group['name'] as String).isEmpty
+                                        ? '?'
+                                        : (group['name'] as String)[0]
+                                              .toUpperCase(),
+                                    style: const TextStyle(
+                                      color: purple,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                ),
+                                title: Text(
+                                  group['name'] as String,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: deepPurple,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  last == null
+                                      ? 'No messages yet. Say hi!'
+                                      : last['body'] as String,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: last == null
+                                    ? null
+                                    : Text(
+                                        _chatTime(last['sentAt'] as DateTime),
+                                        style: const TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key, required this.groupId, required this.groupName});
+
+  final int groupId;
+  final String groupName;
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final textController = TextEditingController();
+  final scrollController = ScrollController();
+  List<Map<String, Object?>> messages = [];
+  String senderName = 'Me';
+  bool loading = true;
+  bool sending = false;
+  String? inputError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    textController.dispose();
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!scrollController.hasClients) return;
+      scrollController.animateTo(
+        scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _load() async {
+    try {
+      final profile = await DatabaseService.instance.getProfile();
+      final rows = await DatabaseService.instance.getMessages(widget.groupId);
+      final name = (profile?['name'] as String?)?.trim() ?? '';
+      if (!mounted) return;
+      setState(() {
+        senderName = name.isEmpty ? 'Me' : name;
+        messages = rows;
+        loading = false;
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load messages: $error')),
+      );
+    }
+  }
+
+  Future<void> _send() async {
+    if (sending) return;
+    final text = textController.text.trim();
+    if (text.isEmpty) {
+      setState(() => inputError = 'Type a message first');
+      return;
+    }
+    if (text.length > 500) {
+      setState(() => inputError = 'Message is too long (max 500 characters)');
+      return;
+    }
+    setState(() {
+      sending = true;
+      inputError = null;
+    });
+    try {
+      await DatabaseService.instance.addMessage(
+        groupId: widget.groupId,
+        sender: senderName,
+        body: text,
+      );
+      final rows = await DatabaseService.instance.getMessages(widget.groupId);
+      if (!mounted) return;
+      textController.clear();
+      setState(() {
+        messages = rows;
+        sending = false;
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => sending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not send message: $error')),
+      );
+    }
+  }
+
+  Widget _bubble(Map<String, Object?> message) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+        ),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(14, 9, 14, 8),
+        decoration: const BoxDecoration(
+          color: purple,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(18),
+            topRight: Radius.circular(18),
+            bottomLeft: Radius.circular(18),
+            bottomRight: Radius.circular(4),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              message['sender'] as String,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              message['body'] as String,
+              style: const TextStyle(color: Colors.white, height: 1.35),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              _chatTime(message['sentAt'] as DateTime),
+              style: const TextStyle(color: Colors.white60, fontSize: 10),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.groupName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator(color: purple))
+                : messages.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(30),
+                      child: Text(
+                        'No messages yet.\nSend the first message to your study group!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.black54, height: 1.5),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                    itemCount: messages.length,
+                    itemBuilder: (_, index) => _bubble(messages[index]),
+                  ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            child: Text(
+              'Demo chat: messages are saved on this device only.',
+              style: TextStyle(color: Colors.black45, fontSize: 11),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: textController,
+                      minLines: 1,
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
+                      onChanged: (_) {
+                        if (inputError != null) {
+                          setState(() => inputError = null);
+                        }
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Write a message...',
+                        errorText: inputError,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: IconButton.filled(
+                      style: IconButton.styleFrom(
+                        backgroundColor: purple,
+                        fixedSize: const Size(50, 50),
+                      ),
+                      onPressed: sending ? null : _send,
+                      icon: sending
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.send_rounded),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// MODULE 3: GROUP FILTER (SUBJECT AND TIME)
+// ============================================================================
+
+
+enum TimeFilter { any, today, week, morning, afternoon, evening }
+
+extension TimeFilterLabel on TimeFilter {
+  String get label {
+    switch (this) {
+      case TimeFilter.any:
+        return 'Any time';
+      case TimeFilter.today:
+        return 'Today';
+      case TimeFilter.week:
+        return 'Next 7 days';
+      case TimeFilter.morning:
+        return 'Morning (before 12 PM)';
+      case TimeFilter.afternoon:
+        return 'Afternoon (12 - 5 PM)';
+      case TimeFilter.evening:
+        return 'Evening (after 5 PM)';
+    }
+  }
+}
+
+bool matchesTimeFilter(DateTime value, TimeFilter filter) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(value.year, value.month, value.day);
+  switch (filter) {
+    case TimeFilter.any:
+      return true;
+    case TimeFilter.today:
+      return day == today;
+    case TimeFilter.week:
+      return !day.isBefore(today) &&
+          day.isBefore(today.add(const Duration(days: 7)));
+    case TimeFilter.morning:
+      return value.hour < 12;
+    case TimeFilter.afternoon:
+      return value.hour >= 12 && value.hour < 17;
+    case TimeFilter.evening:
+      return value.hour >= 17;
+  }
+}
+
+class GroupFilterResult {
+  const GroupFilterResult(this.subject, this.time);
+
+  final String subject;
+  final TimeFilter time;
+}
+
+Future<GroupFilterResult?> showGroupFilterSheet(
+  BuildContext context, {
+  required List<String> subjects,
+  required String subject,
+  required TimeFilter time,
+}) {
+  return showModalBottomSheet<GroupFilterResult>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: Colors.white,
+    builder: (_) =>
+        _FilterSheet(subjects: subjects, subject: subject, time: time),
+  );
+}
+
+class _FilterSheet extends StatefulWidget {
+  const _FilterSheet({
+    required this.subjects,
+    required this.subject,
+    required this.time,
+  });
+
+  final List<String> subjects;
+  final String subject;
+  final TimeFilter time;
+
+  @override
+  State<_FilterSheet> createState() => _FilterSheetState();
+}
+
+class _FilterSheetState extends State<_FilterSheet> {
+  late String subject;
+  late TimeFilter time;
+
+  @override
+  void initState() {
+    super.initState();
+    // If the saved subject no longer exists (group deleted), fall back to All.
+    subject = widget.subjects.contains(widget.subject)
+        ? widget.subject
+        : 'All';
+    time = widget.time;
+  }
+
+  Widget _title(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8, top: 4),
+    child: Text(
+      text,
+      style: const TextStyle(
+        color: deepPurple,
+        fontWeight: FontWeight.bold,
+        fontSize: 15,
+      ),
+    ),
+  );
+
+  Widget _chip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) => ChoiceChip(
+    label: Text(label),
+    selected: selected,
+    onSelected: (_) => onTap(),
+    selectedColor: purple,
+    backgroundColor: const Color(0xFFF6F4FF),
+    labelStyle: TextStyle(
+      color: selected ? Colors.white : deepPurple,
+      fontWeight: FontWeight.w600,
+    ),
+    side: BorderSide.none,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final subjectOptions = ['All', ...widget.subjects];
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(22, 4, 22, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Filter study groups',
+              style: TextStyle(
+                color: deepPurple,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _title('Subject'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in subjectOptions)
+                  _chip(
+                    label: option,
+                    selected: subject == option,
+                    onTap: () => setState(() => subject = option),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _title('Meeting time'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in TimeFilter.values)
+                  _chip(
+                    label: option.label,
+                    selected: time == option,
+                    onTap: () => setState(() => time = option),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => setState(() {
+                      subject = 'All';
+                      time = TimeFilter.any;
+                    }),
+                    child: const Text('Reset'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton(
+                    onPressed: () =>
+                        Navigator.pop(context, GroupFilterResult(subject, time)),
+                    child: const Text('Apply filters'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// MODULE 3: PROFILE BADGES
+// ============================================================================
+
+
+class _Badge {
+  const _Badge({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.current,
+    required this.target,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final int current;
+  final int target;
+
+  bool get earned => current >= target;
+}
+
+class ProfileBadges extends StatefulWidget {
+  const ProfileBadges({
+    super.key,
+    required this.groupCount,
+    this.refreshToken = 0,
+  });
+
+  final int groupCount;
+
+  /// Change this value to make the badges reload their counts.
+  final int refreshToken;
+
+  @override
+  State<ProfileBadges> createState() => _ProfileBadgesState();
+}
+
+class _ProfileBadgesState extends State<ProfileBadges> {
+  bool loading = true;
+  int bookingCount = 0;
+  int messageCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileBadges oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final bookings = await DatabaseService.instance.getBookingCount();
+      final messages = await DatabaseService.instance.getMessageCount();
+      if (!mounted) return;
+      setState(() {
+        bookingCount = bookings;
+        messageCount = messages;
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => loading = false);
+    }
+  }
+
+  List<_Badge> get _badges => [
+    _Badge(
+      title: 'First Group',
+      description: 'Create your first study group',
+      icon: Icons.groups_rounded,
+      current: widget.groupCount,
+      target: 1,
+    ),
+    _Badge(
+      title: 'Group Builder',
+      description: 'Create 3 study groups',
+      icon: Icons.diversity_3_rounded,
+      current: widget.groupCount,
+      target: 3,
+    ),
+    _Badge(
+      title: 'Library Regular',
+      description: 'Book your first library slot',
+      icon: Icons.local_library_rounded,
+      current: bookingCount,
+      target: 1,
+    ),
+    _Badge(
+      title: 'Study Planner',
+      description: 'Make 3 library bookings',
+      icon: Icons.event_available_rounded,
+      current: bookingCount,
+      target: 3,
+    ),
+    _Badge(
+      title: 'Chat Starter',
+      description: 'Send your first group message',
+      icon: Icons.chat_bubble_rounded,
+      current: messageCount,
+      target: 1,
+    ),
+    _Badge(
+      title: 'Active Chatter',
+      description: 'Send 10 group messages',
+      icon: Icons.forum_rounded,
+      current: messageCount,
+      target: 10,
+    ),
+  ];
+
+  String _level(int earned) {
+    if (earned >= 5) return 'Study Star';
+    if (earned >= 2) return 'Active Pal';
+    return 'Newcomer';
+  }
+
+  Widget _badgeTile(_Badge badge) {
+    final earned = badge.earned;
+    final shown = badge.current > badge.target ? badge.target : badge.current;
+    return Tooltip(
+      message: badge.description,
+      child: SizedBox(
+        width: 92,
+        child: Column(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: earned ? lilac : const Color(0xFFF0F0F3),
+                border: Border.all(
+                  color: earned ? purple : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                badge.icon,
+                color: earned ? purple : Colors.black26,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              badge.title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              style: TextStyle(
+                color: earned ? deepPurple : Colors.black45,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              earned ? 'Earned' : '$shown/${badge.target}',
+              style: TextStyle(
+                color: earned ? green : Colors.black38,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final badges = _badges;
+    final earned = badges.where((b) => b.earned).length;
+    return Card(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.stars_rounded, color: purple),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Profile badges',
+                    style: TextStyle(
+                      color: deepPurple,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: lilac,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    _level(earned),
+                    style: const TextStyle(
+                      color: purple,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$earned of ${badges.length} badges earned',
+              style: const TextStyle(color: Colors.black54, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator(color: purple)),
+              )
+            else
+              Wrap(
+                spacing: 6,
+                runSpacing: 14,
+                alignment: WrapAlignment.spaceBetween,
+                children: badges.map(_badgeTile).toList(),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
