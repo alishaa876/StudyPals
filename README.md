@@ -139,7 +139,40 @@ Module 3 screenshots will be added below to demonstrate the completed implementa
 ![StudyPals Application](assets/mybookings.jpeg)
 ![StudyPals Application](assets/profilebadges.jpeg)
 
+## Module 4: Testing, Optimization and Final Build
+
+**Duration:** November 16 – November 22, 2026
+
+### Completed Work
+
+- Tested the application’s implemented features to verify their functionality.
+- Identified and fixed bugs and issues during testing.
+- Improved the application layout and user interface.
+- Optimized application performance and loading speed.
+- Built the final Android APK.
+- Updated the GitHub repository with the final project files.
+- Updated the project README with features, setup instructions, and application screenshots.
+
+### Module 4 – Key Activities
+
+1. **Feature Testing:** Tested all implemented features to ensure they work correctly.
+2. **Bug Fixing:** Fixed bugs and improved application stability.
+3. **UI Improvements:** Refined the application layout and user interface.
+4. **Performance Optimization:** Improved loading speed and overall performance.
+6. **GitHub Update:** Uploaded and organized the final project files on GitHub.
+7. **Documentation:** Updated the README with project features, setup instructions, and screenshots.
+
+
+### Project Repository
+
+GitHub: https://github.com/alishaa876/StudyPals
+
+---
+
 ## Project Status
-Module 1: Progress completed.
-Module 2 : Progress completed.
-Module 3: Progress Completed.
+
+- Module 1: Completed.
+- Module 2: Completed.
+- Module 3: Completed.
+- Module 4: Completed.
+
